@@ -1,0 +1,188 @@
+namespace flatbuffers.compiler;
+
+/// Contains the type-checked information of a flatc compilation, ready for
+/// code generation.
+/// Flatbuffers DAG features are intentionally avoided -- repeated references
+/// to the same object are replaced with indexing into a table. This is so the
+/// json version of this schema does not explode. This allows languages without
+/// flatbuffers to write code generators from this IR too.
+table Compilation {
+  /// Global store of all types.
+  symbols: [Symbol];
+  /// Information about the schema files included in compliation.
+  schemas: [Schema];
+  /// Common code-generator options that apply to most or all languages.
+  code_gen_options: CodeGenOptions;
+  /// New schema features. Code generators must check all features are
+  /// recognized and supported, and warn or fail appropriately.
+  features: [Feature];
+}
+
+/// A Schema file.
+table Schema {
+  /// Path to the schema file from where the compiler was invoked.
+  filename: string;
+  /// The list of files included in this schema file.
+  /// Indexes into `Compilation.schemas`.
+  includes: [uint];
+  /// The list of symbols declared in this schema file.
+  /// Indexes into `Compilation.symbols`.
+  symbols: [uint];
+  /// The list of symbols referenced by types in this schema file.
+  /// Indexes into `Compilation.symbols`.
+  imported_symbols: [uint];
+}
+
+/// Information about a symbol
+table Symbol {
+  /// Fully qualified (`.`-separated) name.
+  name: string (required, key);
+  metadata: Metadata;
+  /// Information specific to the various different types of declarations.
+  detail: Declaration;
+}
+
+/// The various different types of declarations.
+union Declaration {
+  Struct,
+  Table,
+  Enum,
+  Union,
+  RpcService,
+}
+table Struct {
+  fields: [TableField];
+}
+table Table {
+  fields: [TableField];
+}
+table Union {
+  variants: [EnumVariant];
+}
+table Enum {
+  variants: [EnumVariant];
+}
+table RpcService {
+  methods: [RpcMethod];
+}
+table TableField {
+  name: string;
+  metadata: Metadata;
+  type: Type;
+  non_presence_behavior: NonPresenceBehavior = Optional;
+  default_value: string;
+}
+/// Reader's responses to a field not being present in a Flatbuffers binary.
+enum NonPresenceBehavior: byte {
+  Optional,
+  Default,
+  Required,
+}
+table EnumVariant {
+  name: string;
+  metadata: Metadata;
+  type: Type;
+}
+table RpcMethod {
+  name: string;
+  metadata: Metadata;
+  argument_type: Type;
+  return_type: Type;
+}
+
+// These must correspond to the enum in idl.h.
+enum BaseType : byte {
+    None,
+    UType,
+    Bool,
+    Byte,
+    UByte,
+    Short,
+    UShort,
+    Int,
+    UInt,
+    Long,
+    ULong,
+    Float,
+    Double,
+    String,
+    Vector,
+    /// Struct or Table.
+    Struct,
+    Union,
+    Array,
+    // Add any new type above this value.
+    MaxBaseType
+}
+
+table Type {
+    base_type: BaseType;
+    /// Only not `None` if base_type is a Vector or Array.
+    element_type: BaseType = None;
+    /// Indexes into `Compilation.symbols` if base_type or element_type are
+    /// Struct, Enum, or Union,
+    symbol: uint = null;
+    /// If base_type == Array, the length of the array.
+    fixed_length:uint16 = null;
+}
+
+/// Common metadata.
+table Metadata {
+  /// Location where something was declared.
+  location: Location;
+  /// Attached documentation (`///`-comments in a schema).
+  documentation: [string];
+  /// Key to optional value pairs.
+  attributes: [KeyValue];
+}
+struct Location {
+  /// Indexes into `Compilation.schemas`.
+  schema: uint;
+  line: uint;
+  column: uint;
+}
+table KeyValue {
+  key: string (required, key);
+  value: string;
+}
+
+/// New schema language features that will probably break code generators.
+enum Feature : uint16 {
+  /// Allows unions containing structs or vectors.
+  AdvancedUnions,
+  /// Allows `null` as a default value for scalars in tables.
+  OptionalScalars,
+  /// Allows fixed size arrays.
+  FixedSizeArrays,
+}
+
+table CodeGenOptions {
+   /// Generate mutable flatbuffer API.
+   mutable_buffer: bool;
+   /// Generate output in a single file.
+   one_file: bool;
+   /// Generate code for included files. (aka --gen-all)
+   generate_included: bool;
+   /// Generate typename functions.
+   generate_name_strings: bool;
+   /// Generate native object API.
+   generate_object_based_api: bool;
+   /// Prefix for native version of Flatbuffers objects.
+   object_prefix: string;
+   /// Suffix for native version of Flatbuffers objects.
+   object_suffix: string;
+   /// Generate `==` operator.
+   generate_compare: bool;
+   /// Path prefix when including generated files.
+   include_prefix: string;
+   /// Keep original prefix when including generated files.
+   keep_include_path: bool;
+   /// Generate code to embed schema into source.
+   binary_schema_gen_embed: bool;
+   /// Suffix for generated filenames. Default: "_generated"
+   filename_suffix: string;
+   /// Extension to append to generated filenames, default is language specific.
+   filename_extension: string;
+   /// Generate GRPC service interface.
+   generate_grpc: bool;
+}

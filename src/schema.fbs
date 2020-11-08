@@ -1,0 +1,86 @@
+namespace flatbuffers_schema;
+
+enum BaseType : byte {
+  None, UType, Bool, Int8, UInt8, Int16, UInt16, Int32, UInt32, Int64, UInt64,
+  Float32, Float64, String, Vector, Table, Union,
+}
+table Type {
+  base: BaseType;
+  type_path: [string];
+  is_vector: bool;
+}
+
+table Metadata {
+  location: Location;
+  attributes: [KeyValue];
+  documentation: [string];
+}
+
+struct Location {
+  line: uint;
+  column: uint;
+}
+
+table KeyValue {
+  key: string (required, key);
+  value: string;
+}
+
+// Declarations:
+
+table Namespace {
+  path: [string];
+  location: Location;
+}
+
+table Enum {
+  name: string;
+  base_type: flatbuffers_schema.BaseType;  // only uints allowed for bitflags.
+  variant_names: [string];  // Required
+  variant_types: [Type];  // If and only if its a union.
+  is_bit_flags: bool;
+  location: Location;
+}
+
+table Table {
+  name: string;
+  fields: [TableField];
+  is_struct: bool;
+  metadata: Metadata;
+}
+
+table TableField {
+  name: string;
+  id: uint16;
+  default_value: string;
+  type: Type;
+  metadata: Metadata;
+}
+
+table RpcService {
+  name: string;
+  methods: [RpcMethod];
+  location: Location;
+  metadata: Metadata;
+}
+table RpcMethod {
+  name: string;
+  request_type: Type;
+  response_type: Type;
+  metadata: Metadata;
+}
+
+table Schema {
+  filename: string;
+  includes: [string];
+  tables: [Table];
+  enums: [Enum];
+
+  file_extension: string;
+  file_identifier: string;
+  root_type: Type;
+}
+
+//rpc_service Schema {
+//   FooMethod(RpcService) : RpcMethod;
+// }
