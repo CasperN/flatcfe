@@ -32,7 +32,7 @@ fn string_literal(s: &str) -> IResult<&str, &str> {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub struct Documentation<'s>(Vec<&'s str>);
+pub struct Documentation<'s>(pub Vec<&'s str>);
 fn documentation_block(s: &str) -> IResult<&str, Documentation> {
     let doc = preceded(skip_ws(tag("///")), is_not("\n\r"));
     map(many0(doc), Documentation)(s)
@@ -71,8 +71,8 @@ fn maybe_eq_value(s: &str) -> IResult<&str, Option<&str>> {
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct KeyVal<'s> {
-    key: &'s str,
-    value: Option<&'s str>,
+    pub key: &'s str,
+    pub value: Option<&'s str>,
 }
 fn keyval(schema: &str) -> IResult<&str, KeyVal<'_>> {
     let (rest, key) = preceded(multispace0, identifier)(schema)?;
@@ -120,13 +120,13 @@ fn field_type(s: &str) -> IResult<&str, TableFieldType<'_>> {
 pub struct TableField<'s> {
     field_name: &'s str,
     field_type: TableFieldType<'s>,
-    documentation: Documentation<'s>,
+    pub documentation: Documentation<'s>,
     default_value: Option<&'s str>,
-    metadata: Vec<KeyVal<'s>>,
+    pub attributes: Vec<KeyVal<'s>>,
 }
 
 fn table_field(schema: &str) -> IResult<&str, TableField<'_>> {
-    let (rest, (documentation, field_name, _, field_type, default_value, metadata, _)) =
+    let (rest, (documentation, field_name, _, field_type, default_value, attributes, _)) =
         tuple((
             skip_ws(documentation_block),
             skip_ws(identifier),
@@ -143,7 +143,7 @@ fn table_field(schema: &str) -> IResult<&str, TableField<'_>> {
             field_name,
             default_value,
             field_type,
-            metadata,
+            attributes,
         },
     ))
 }
@@ -152,8 +152,8 @@ fn table_field(schema: &str) -> IResult<&str, TableField<'_>> {
 pub struct Table<'s> {
     pub name: &'s str,
     fields: Vec<TableField<'s>>,
-    metadata: Vec<KeyVal<'s>>,
-    documentation: Documentation<'s>,
+    pub attributes: Vec<KeyVal<'s>>,
+    pub documentation: Documentation<'s>,
     is_struct: bool,
 }
 
@@ -168,10 +168,10 @@ fn table_declaration(schema: &str) -> IResult<&str, Table<'_>> {
             skip_ws(maybe_keyvals),
             table_fields,
         )),
-        |(documentation, is_struct, name, metadata, fields)| Table {
+        |(documentation, is_struct, name, attributes, fields)| Table {
             name,
             fields,
-            metadata,
+            attributes,
             documentation,
             is_struct,
         },
@@ -181,7 +181,7 @@ fn table_declaration(schema: &str) -> IResult<&str, Table<'_>> {
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct EnumVariant<'s> {
     pub name: &'s str,
-    documentation: Documentation<'s>,
+    pub documentation: Documentation<'s>,
     value: Option<&'s str>, // should be integer.
 }
 fn enum_variant(schema: &str) -> IResult<&str, EnumVariant<'_>> {
@@ -203,7 +203,7 @@ pub struct Enum<'s> {
     pub name: &'s str,
     enum_type: &'s str,
     is_union: bool,
-    documentation: Documentation<'s>,
+    pub documentation: Documentation<'s>,
     variants: Vec<EnumVariant<'s>>,
 }
 
@@ -251,14 +251,14 @@ fn union_declaration(schema: &str) -> IResult<&str, Enum<'_>> {
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct RpcMethod<'s> {
     pub name: &'s str,
-    documentation: Documentation<'s>,
+    pub documentation: Documentation<'s>,
     argument_type: IdentifierPath<'s>,
     return_type: IdentifierPath<'s>,
 }
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct RpcService<'s> {
     pub name: &'s str,
-    documentation: Documentation<'s>,
+    pub documentation: Documentation<'s>,
     methods: Vec<RpcMethod<'s>>,
 }
 fn rpc_method(schema: &str) -> IResult<&str, RpcMethod<'_>> {

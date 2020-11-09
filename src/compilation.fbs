@@ -1,22 +1,4 @@
-namespace flatbuffers.compiler;
-
-/// Contains the type-checked information of a flatc compilation, ready for
-/// code generation.
-/// Flatbuffers DAG features are intentionally avoided -- repeated references
-/// to the same object are replaced with indexing into a table. This is so the
-/// json version of this schema does not explode. This allows languages without
-/// flatbuffers to write code generators from this IR too.
-table Compilation {
-  /// Global store of all types.
-  symbols: [Symbol];
-  /// Information about the schema files included in compliation.
-  schemas: [Schema];
-  /// Common code-generator options that apply to most or all languages.
-  code_gen_options: CodeGenOptions;
-  /// New schema features. Code generators must check all features are
-  /// recognized and supported, and warn or fail appropriately.
-  features: [Feature];
-}
+namespace flatbuffers_compiler;
 
 /// A Schema file.
 table Schema {
@@ -32,64 +14,6 @@ table Schema {
   /// Indexes into `Compilation.symbols`.
   imported_symbols: [uint];
 }
-
-/// Information about a symbol
-table Symbol {
-  /// Fully qualified (`.`-separated) name.
-  name: string (required, key);
-  metadata: Metadata;
-  /// Information specific to the various different types of declarations.
-  detail: Declaration;
-}
-
-/// The various different types of declarations.
-union Declaration {
-  Struct,
-  Table,
-  Enum,
-  Union,
-  RpcService,
-}
-table Struct {
-  fields: [TableField];
-}
-table Table {
-  fields: [TableField];
-}
-table Union {
-  variants: [EnumVariant];
-}
-table Enum {
-  variants: [EnumVariant];
-}
-table RpcService {
-  methods: [RpcMethod];
-}
-table TableField {
-  name: string;
-  metadata: Metadata;
-  type: Type;
-  non_presence_behavior: NonPresenceBehavior = Optional;
-  default_value: string;
-}
-/// Reader's responses to a field not being present in a Flatbuffers binary.
-enum NonPresenceBehavior: byte {
-  Optional,
-  Default,
-  Required,
-}
-table EnumVariant {
-  name: string;
-  metadata: Metadata;
-  type: Type;
-}
-table RpcMethod {
-  name: string;
-  metadata: Metadata;
-  argument_type: Type;
-  return_type: Type;
-}
-
 // These must correspond to the enum in idl.h.
 enum BaseType : byte {
     None,
@@ -126,15 +50,7 @@ table Type {
     fixed_length:uint16 = null;
 }
 
-/// Common metadata.
-table Metadata {
-  /// Location where something was declared.
-  location: Location;
-  /// Attached documentation (`///`-comments in a schema).
-  documentation: [string];
-  /// Key to optional value pairs.
-  attributes: [KeyValue];
-}
+
 struct Location {
   /// Indexes into `Compilation.schemas`.
   schema: uint;
@@ -145,6 +61,76 @@ table KeyValue {
   key: string (required, key);
   value: string;
 }
+/// Common metadata.
+table Metadata {
+  /// Location where something was declared.
+  location: Location;
+  /// Attached documentation (`///`-comments in a schema).
+  documentation: [string];
+  /// Key to optional value pairs.
+  attributes: [KeyValue];
+}
+
+
+/// Reader's responses to a field not being present in a Flatbuffers binary.
+enum NonPresenceBehavior: byte {
+  Optional,
+  Default,
+  Required,
+}
+table TableField {
+  name: string;
+  metadata: Metadata;
+  type: Type;
+  non_presence_behavior: NonPresenceBehavior;
+  default_value: string;
+}
+table EnumVariant {
+  name: string;
+  metadata: Metadata;
+  type: Type;
+}
+table RpcMethod {
+  name: string;
+  metadata: Metadata;
+  argument_type: Type;
+  return_type: Type;
+}
+table Struct {
+  fields: [TableField];
+}
+table Table {
+  fields: [TableField];
+}
+table Union {
+  variants: [EnumVariant];
+}
+table Enum {
+  variants: [EnumVariant];
+}
+table RpcService {
+  methods: [RpcMethod];
+}
+
+/// The various different types of declarations.
+union Declaration {
+  Struct,
+  Table,
+  Enum,
+  Union,
+  RpcService,
+}
+
+
+/// Information about a symbol
+table Symbol {
+  /// Fully qualified (`.`-separated) name.
+  name: string (required, key);
+  metadata: Metadata;
+  /// Information specific to the various different types of declarations.
+  detail: Declaration;
+}
+
 
 /// New schema language features that will probably break code generators.
 enum Feature : uint16 {
@@ -185,4 +171,22 @@ table CodeGenOptions {
    filename_extension: string;
    /// Generate GRPC service interface.
    generate_grpc: bool;
+}
+
+/// Contains the type-checked information of a flatc compilation, ready for
+/// code generation.
+/// Flatbuffers DAG features are intentionally avoided -- repeated references
+/// to the same object are replaced with indexing into a table. This is so the
+/// json version of this schema does not explode. This allows languages without
+/// flatbuffers to write code generators from this IR too.
+table Compilation {
+  /// Global store of all types.
+  symbols: [Symbol];
+  /// Information about the schema files included in compliation.
+  schemas: [Schema];
+  /// Common code-generator options that apply to most or all languages.
+  code_gen_options: CodeGenOptions;
+  /// New schema features. Code generators must check all features are
+  /// recognized and supported, and warn or fail appropriately.
+  features: [Feature];
 }

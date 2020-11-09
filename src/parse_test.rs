@@ -105,7 +105,7 @@ fn test_parse_table_details() {
         let field1 = &table.fields[0];
         assert_eq!(field1.field_name, "field1");
         assert_eq!(field1.documentation.0, &[" Sup bro."]);
-        assert_eq!(&field1.field_type.ident_path.0, &["Foo"]);
+        assert_eq!(&field1.field_type.ident_path.0, &"Foo");
         assert!(!field1.field_type.is_vector);
         assert!(field1.metadata.is_empty());
     }
@@ -114,7 +114,7 @@ fn test_parse_table_details() {
         let field2 = &table.fields[1];
         assert_eq!(field2.field_name, "field2");
         assert_eq!(field2.documentation.0, &[" Sup", " bro"]);
-        assert_eq!(&field2.field_type.ident_path.0, &["Foo", "Bar"]);
+        assert_eq!(&field2.field_type.ident_path.0, &"Foo.Bar");
         assert!(field2.field_type.is_vector);
         assert!(field2.metadata.is_empty());
     }
@@ -122,7 +122,7 @@ fn test_parse_table_details() {
         // Test field3 makes sense.
         let field3 = &table.fields[2];
         assert_eq!(field3.field_name, "field3");
-        assert_eq!(&field3.field_type.ident_path.0, &["Foo", "Bar", "Baz"]);
+        assert_eq!(&field3.field_type.ident_path.0, &"Foo.Bar.Baz");
         assert!(!field3.field_type.is_vector);
         assert_eq!(field3.metadata.len(), 2);
         assert_eq!(field3.metadata[0].key, "sup");
@@ -134,7 +134,7 @@ fn test_parse_table_details() {
         // Test field4 makes sense.
         let field4 = &table.fields[3];
         assert_eq!(field4.field_name, "field4");
-        assert_eq!(&field4.field_type.ident_path.0, &["Foo", "Bar", "Baz"]);
+        assert_eq!(&field4.field_type.ident_path.0, &"Foo.Bar.Baz");
         assert!(field4.field_type.is_vector);
         assert_eq!(field4.metadata.len(), 1);
         assert_eq!(field4.metadata[0].key, "sup");
