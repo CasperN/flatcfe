@@ -1,15 +1,14 @@
 #![feature(is_sorted)]
-// use indexmap;
-use std::io::Read;
-use std::path::Path;
-// use std::path::PathBuf;
 use typed_arena::Arena;
-mod parse;
 use flatbuffers;
-use std::collections::btree_map::Entry;
-use std::collections::BTreeMap;
-mod compilation_generated;
 use compilation_generated::flatbuffers_compiler as flatc;
+use load::*;
+use types::*; // CASPER get rid of glob import.
+
+mod types;
+mod load;
+mod parse;
+mod compilation_generated;
 
 /*
 TODO:
@@ -38,111 +37,10 @@ Resolve full names of all symbols
 Phases:
     [x] load_and_parse_schemas
     [x] Freeze SymbolTable and FileTable.
-    [ ] write_schemas vector
+    [x] write_schemas vector
     [ ] verify_and_write_symbols_vector
     [ ] finish compilation.
 */
-
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
-struct FileInfo<'a> {
-    filename: &'a str,
-    includes: Vec<&'a str>,
-    symbols: Vec<&'a str>,
-    imported_symbols: Vec<&'a str>,
-}
-
-impl<'a> FileInfo<'a> {
-    fn new(filename: &'a str) -> Self {
-        FileInfo {
-            filename,
-            includes: Vec::new(),
-            symbols: Vec::new(),
-            imported_symbols: Vec::new(),
-        }
-    }
-}
-
-#[derive(Debug)]
-struct Declaration<'a> {
-    full_name: &'a str,
-    defining_schema: &'a str,
-    parsed_declaration: parse::Declaration<'a>,
-}
-
-/// Loads and parses a system of schema files. Tracks which file imported which other file. Ensures
-/// fully qualified namespaced symbols are globally unique.
-fn load<'a>(
-    arena: &'a Arena<String>,
-    filenames: &'a [String],
-) -> (Vec<FileInfo<'a>>, Vec<Declaration<'a>>) {
-    let mut to_visit = std::collections::VecDeque::<&'a str>::new();
-    let mut schema_files = BTreeMap::<&'a str, FileInfo<'a>>::new();
-    let mut symbols = BTreeMap::<&'a str, Declaration<'a>>::new();
-    for f in filenames {
-        to_visit.push_back(arena.alloc(f.to_string()));
-    }
-    while let Some(schema_file) = to_visit.pop_front() {
-        if let std::collections::btree_map::Entry::Vacant(v) = schema_files.entry(&schema_file) {
-            // Load the file.
-            let path = Path::new(schema_file);
-            let mut f = std::fs::File::open(path).expect("failed to open file.");
-            let buf = arena.alloc(String::new());
-            f.read_to_string(buf).expect("failed to read file");
-            let parse::Schema {
-                included_files,
-                declarations,
-            } = parse::fully_parse_schema(buf);
-
-            // Record the includes information.
-            let schema_info = v.insert(FileInfo::new(schema_file));
-            for included in included_files.iter() {
-                to_visit.push_back(included);
-                schema_info.includes.push(included);
-            }
-            // Record all declarations by their fully qualified namespaced names.
-            let mut current_namespace = String::new();
-            for decl in declarations.iter() {
-                use parse::Declaration::*;
-                let name = match decl {
-                    Namespace(ident) => {
-                        current_namespace.clear();
-                        current_namespace.push_str(ident.0);
-                        continue;
-                    }
-                    Table(t) => t.name,
-                    Enum(e) => e.name,
-                    RpcService(r) => r.name,
-                    FileExtension(_) | FileIdentifier(_) => {
-                        // CASPER what to do with these?
-                        continue;
-                    }
-                };
-                let fully_qualified_name = arena.alloc(current_namespace.clone());
-                fully_qualified_name.push('.');
-                fully_qualified_name.push_str(name);
-                // Associate symbol with schema file.
-                schema_info.symbols.push(fully_qualified_name);
-                // Store in symbol table.
-                match symbols.entry(fully_qualified_name) {
-                    Entry::Vacant(e) => {
-                        e.insert(Declaration {
-                            full_name: fully_qualified_name,
-                            defining_schema: schema_file,
-                            parsed_declaration: decl.clone(),
-                        });
-                    }
-                    Entry::Occupied(e) => {
-                        panic!("Duplicated symbol: {:?}", e.key());
-                    }
-                }
-            }
-        }
-    }
-    (
-        schema_files.into_iter().map(|(_, v)| v).collect(),
-        symbols.into_iter().map(|(_, v)| v).collect(),
-    )
-}
 
 struct TypeResolvingWriter<'builder, 'arena> {
     fbb: flatbuffers::FlatBufferBuilder<'builder>,
@@ -184,46 +82,26 @@ fn write_metadata<'builder, 'arena>(
     )
 }
 
-fn resolve_primitive_type(ty: &str) -> Option<flatc::BaseType> {
-    match ty {
-        "string" => Some(flatc::BaseType::String),
-        // Classic names.
-        "bool" => Some(flatc::BaseType::Bool),
-        "ubyte" => Some(flatc::BaseType::UByte),
-        "byte" => Some(flatc::BaseType::Byte),
-        "ushort" => Some(flatc::BaseType::UShort),
-        "short" => Some(flatc::BaseType::Short),
-        "uint" => Some(flatc::BaseType::UInt),
-        "int" => Some(flatc::BaseType::Int),
-        "ulong" => Some(flatc::BaseType::ULong),
-        "long" => Some(flatc::BaseType::Long),
-        "float" => Some(flatc::BaseType::Float),
-        "double" => Some(flatc::BaseType::Double),
-        // Modern names.
-        "uint8" => Some(flatc::BaseType::UByte),
-        "int8" => Some(flatc::BaseType::Byte),
-        "uint16" => Some(flatc::BaseType::UShort),
-        "int16" => Some(flatc::BaseType::Short),
-        "uint32" => Some(flatc::BaseType::UInt),
-        "int32" => Some(flatc::BaseType::Int),
-        "uint64" => Some(flatc::BaseType::ULong),
-        "int64" => Some(flatc::BaseType::Long),
-        "float32" => Some(flatc::BaseType::Float),
-        "float64" => Some(flatc::BaseType::Double),
-        _ => None,
-    }
+struct TypeReference<'a> {
+    // Need reference to caller metadata and file_info.
+    ty: &'a str,
+    caller: &'a str,
+    caller_is_struct: bool,
+    is_vector: bool,
 }
 
 fn write_type<'a, 'b>(
-    ty: &'a str,
-    is_vector: bool,
-    caller: &'a str,
-    _caller_is_table: bool,
+    type_reference: TypeReference<'a>,
     fbb: &mut flatbuffers::FlatBufferBuilder<'b>,
     symbols: &[Declaration<'a>],
-    _schemas: &mut [FileInfo<'a>],
+    _schemas: &mut [FileInfo<'a>],  // CASPER: Calling schema needs to be updated with who it imported.
 ) -> flatbuffers::WIPOffset<flatc::Type<'b>> {
-    // what if its a struct!
+    let TypeReference {
+        ty,
+        caller,
+        caller_is_struct,
+        is_vector,
+    } = type_reference;
     let mut builder = flatc::TypeBuilder::new(fbb);
 
     let base_type = resolve_primitive_type(ty).unwrap_or_else(|| {
@@ -239,13 +117,30 @@ fn write_type<'a, 'b>(
         builder.add_symbol(symbol_index as u32);
 
         match other_decl.parsed_declaration {
-            parse::Declaration::Table(_) => flatc::BaseType::Struct,
+            parse::Declaration::Table(_) => {
+                if caller_is_struct {
+                    println!(
+                        "Structs `{}` cannot have tables as fields `{}`",
+                        caller, &other_decl.full_name
+                    );
+                    std::process::exit(1);
+                }
+                flatc::BaseType::Struct
+            }
             parse::Declaration::Enum(parse::Enum {
                 is_union,
                 enum_type,
                 ..
             }) => {
                 if is_union {
+                    if caller_is_struct {
+                        println!(
+                            "Structs `{}` cannot have unions as fields `{}`",
+                            caller, &other_decl.full_name
+                        );
+                         // CASPER: Make things result typed and exit gracefully.
+                        std::process::exit(1);
+                    }
                     flatc::BaseType::Union
                 } else {
                     // If the enum's base type isn't an integer primitive, we'll report the error
@@ -271,25 +166,6 @@ fn write_type<'a, 'b>(
 }
 
 impl<'builder, 'arena> TypeResolvingWriter<'builder, 'arena> {
-    fn get_file_index(&self, filename: &str) -> usize {
-        self.schema_files
-            .binary_search_by(|info| info.filename.cmp(filename))
-            .expect("Internal error, did I lose track a schemafile somewhere?")
-    }
-    fn get_file_info(&self, filename: &str) -> &FileInfo<'arena> {
-        let i = self.get_file_index(filename);
-        &self.schema_files[i]
-    }
-
-    fn resolve_type_reference(&self, caller: &str, ty: &str) -> Option<&Declaration<'arena>> {
-        // TODO(caspern): This probably shouldn't be an O(N) kinda thing.
-        self.symbols
-            .iter()
-            .filter_map(|decl| type_precedence(caller, ty, decl.full_name).map(|p| (p, decl)))
-            .min_by_key(|(p, _)| *p)
-            .map(|(_, d)| d)
-    }
-
     fn resolve_and_write_compilation(&mut self) {
         debug_assert!(self.schema_files.is_sorted());
 
@@ -304,10 +180,12 @@ impl<'builder, 'arena> TypeResolvingWriter<'builder, 'arena> {
                     for field in t.fields.iter() {
                         let name = self.fbb.create_string(field.field_name);
                         let ty = write_type(
-                            field.field_type.ident_path.0,
-                            field.field_type.is_vector,
-                            symbol.full_name,
-                            /*caller_is_table=*/ true,
+                            TypeReference {
+                                ty: field.field_type.ident_path.0,
+                                caller: symbol.full_name,
+                                is_vector: field.field_type.is_vector,
+                                caller_is_struct: t.is_struct,
+                            },
                             &mut self.fbb,
                             &self.symbols,
                             &mut self.schema_files,
@@ -334,29 +212,16 @@ impl<'builder, 'arena> TypeResolvingWriter<'builder, 'arena> {
                         }
                         written_fields.push(builder.finish())
                     }
-                    let fields = self.fbb.create_vector(&written_fields);
-                    let (detail_type, detail) = if t.is_struct {
-                        (
-                            flatc::Declaration::Struct,
-                            flatc::Table::create(
-                                &mut self.fbb,
-                                &flatc::TableArgs {
-                                    fields: Some(fields),
-                                },
-                            )
-                            .as_union_value(),
-                        )
+                    let detail_type = if t.is_struct {
+                        flatc::Declaration::Struct
                     } else {
-                        (
-                            flatc::Declaration::Table,
-                            flatc::Table::create(
-                                &mut self.fbb,
-                                &flatc::TableArgs {
-                                    fields: Some(fields),
-                                },
-                            )
-                            .as_union_value(),
-                        )
+                        flatc::Declaration::Table
+                    };
+                    let detail = {
+                        let fields = self.fbb.create_vector(&written_fields);
+                        let mut builder = flatc::TableBuilder::new(&mut self.fbb);
+                        builder.add_fields(fields);
+                        builder.finish().as_union_value()
                     };
                     let metadata = write_metadata(
                         symbol.defining_schema,
@@ -383,27 +248,22 @@ impl<'builder, 'arena> TypeResolvingWriter<'builder, 'arena> {
                             &mut self.fbb,
                             &mut self.schema_files,
                         );
-                        // let value = variant.value.map(|v| self.fbb.create_string(v));
                         let mut builder = flatc::EnumVariantBuilder::new(&mut self.fbb);
                         builder.add_name(name);
                         builder.add_metadata(metadata);
-                        // if let Some(v) = value {
-                        //     builder.add_value(v);
-                        // }
                         written_variants.push(builder.finish());
                     }
-                    let variants = self.fbb.create_vector(&written_variants);
-                    let (detail_type, detail) = {
-                        (
-                            flatc::Declaration::Enum,
-                            flatc::Enum::create(
-                                &mut self.fbb,
-                                &flatc::EnumArgs {
-                                    variants: Some(variants),
-                                },
-                            )
-                            .as_union_value(),
-                        )
+                    // CASPER enums need base types.
+                    let detail_type = if e.is_union {
+                        flatc::Declaration::Enum
+                    } else {
+                        flatc::Declaration::Union
+                    };
+                    let detail = {
+                        let variants = self.fbb.create_vector(&written_variants);
+                        let mut builder = flatc::EnumBuilder::new(&mut self.fbb);
+                        builder.add_variants(variants);
+                        builder.finish().as_union_value()
                     };
                     (name, metadata, detail, detail_type)
                 }
@@ -415,12 +275,50 @@ impl<'builder, 'arena> TypeResolvingWriter<'builder, 'arena> {
                         &mut self.fbb,
                         &self.schema_files,
                     );
-                    let (detail_type, detail) = {
-                        (
-                            flatc::Declaration::RpcService,
-                            flatc::RpcService::create(&mut self.fbb, &Default::default())
-                                .as_union_value(),
-                        )
+                    let mut written_methods = Vec::new();
+                    for method in r.methods.iter() {
+                        let name = self.fbb.create_string(method.name);
+                        let metadata = write_metadata(
+                            symbol.defining_schema,
+                            &method.metadata,
+                            &mut self.fbb,
+                            &mut self.schema_files,
+                        );
+                        let argument_type = write_type(
+                            TypeReference {
+                                ty: method.argument_type.0,
+                                caller: symbol.full_name,
+                                is_vector: false,
+                                caller_is_struct: false,
+                            },
+                            &mut self.fbb,
+                            &self.symbols,
+                            &mut self.schema_files,
+                        );
+                        let return_type = write_type(
+                            TypeReference {
+                                ty: method.return_type.0,
+                                caller: symbol.full_name,
+                                is_vector: false,
+                                caller_is_struct: false,
+                            },
+                            &mut self.fbb,
+                            &self.symbols,
+                            &mut self.schema_files,
+                        );
+                        let mut builder = flatc::RpcMethodBuilder::new(&mut self.fbb);
+                        builder.add_name(name);
+                        builder.add_metadata(metadata);
+                        builder.add_return_type(return_type);
+                        builder.add_argument_type(argument_type);
+                        written_methods.push(builder.finish());
+                    }
+                    let detail_type = flatc::Declaration::RpcService;
+                    let detail = {
+                        let methods = self.fbb.create_vector(&written_methods);
+                        let mut builder = flatc::RpcServiceBuilder::new(&mut self.fbb);
+                        builder.add_methods(methods);
+                        builder.finish().as_union_value()
                     };
                     (name, metadata, detail, detail_type)
                 }
@@ -433,101 +331,14 @@ impl<'builder, 'arena> TypeResolvingWriter<'builder, 'arena> {
             written_symbols.push(symbol_builder.finish());
         }
 
-        let s = self.fbb.create_vector(&written_symbols);
-        let c = flatc::Compilation::create(
-            &mut self.fbb,
-            &flatc::CompilationArgs {
-                symbols: Some(s),
-                ..Default::default()
-            },
-        );
-        self.fbb.finish(c, None);
+        let compilation = {
+            let symbols = self.fbb.create_vector(&written_symbols);
+            let mut builder = flatc::CompilationBuilder::new(&mut self.fbb);
+            builder.add_symbols(symbols);
+            builder.finish()
+        };
+        self.fbb.finish(compilation, None);
     }
-}
-
-/// If `caller` calling `ty` may resolve to `symbol` return Some(p) where p is the precidence.
-/// Assumes `caller` and `symbol` are fully qualified types from the root namespace.
-/// The symbol with the lowest precidence is the one that will be selected.
-fn type_precedence(caller: &str, ty: &str, symbol: &str) -> Option<usize> {
-    if !symbol.ends_with(ty) {
-        return None;
-    }
-    // Drop ty suffix from symbol.
-    let mut symbol_prefix = {
-        let prefix = &symbol[..symbol.len() - ty.len()];
-        if prefix.ends_with(".") {
-            prefix[..prefix.len() - 1].split('.')
-        } else {
-            let mut s = prefix.split('.');
-            if prefix.is_empty() {
-                s.next(); // empty the iterator.
-            }
-            s
-        }
-    };
-    let mut caller_prefix = caller.split('.');
-    caller_prefix.next_back(); // Drop the type, leaving the namespace.
-    loop {
-        match (symbol_prefix.next(), caller_prefix.next()) {
-            // Sharing the same namespace so far, maybe we'll match.
-            (Some(_), Some(_)) => continue,
-            // Symbol is in a higher or eq namespace
-            // e.g. symbol prefix = A.B.C ,  caller prefix = A.B.C.D
-            (None, Some(_)) => return Some(caller_prefix.count() + 1),
-            (None, None) => return Some(0),
-            // Symbol is in a lower namespace than caller prefix => not accessible.
-            // e.g. symbol prefix = A.B.C.D, caller prefix = A.B.C
-            (Some(_), None) => return None,
-        }
-    }
-}
-
-#[test]
-fn test_type_precedence() {
-    assert_eq!(
-        type_precedence("A.B.C.D.table", "E.struct", "A.B.C.D.E.struct"),
-        Some(0)
-    );
-    assert_eq!(
-        type_precedence("A.B.C.D.table", "E.struct", "A.B.C.E.struct"),
-        Some(1)
-    );
-    assert_eq!(
-        type_precedence("A.B.C.D.table", "E.struct", "A.B.E.struct"),
-        Some(2)
-    );
-    assert_eq!(
-        type_precedence("A.B.C.D.table", "E.struct", "A.E.struct"),
-        Some(3)
-    );
-    assert_eq!(
-        type_precedence("A.B.C.D.table", "E.struct", "E.struct"),
-        Some(4)
-    );
-    assert_eq!(
-        type_precedence("A.B.C.D.table", "E.struct", "A.F.struct"),
-        None
-    );
-    assert_eq!(
-        type_precedence("A.B.C.D.table", "E.struct", "A.B.C.D.table"),
-        None
-    );
-    assert_eq!(
-        type_precedence("A.B.C.D.table", "E.struct", "A.B.C.D.F.E.struct"),
-        None
-    );
-    assert_eq!(
-        type_precedence("A.B.C.D.table", "E.struct", "A.B.C.D.FE.struct"),
-        None
-    );
-    assert_eq!(
-        type_precedence("A.B.C.D.table", "E.struct", "lol.some.irrelevant.type"),
-        None
-    );
-    assert_eq!(
-        type_precedence("A.B.C.D.table", "C.struct", "A.B.C.struct"),
-        Some(2) // Precedence is 2 b/c A.B.C.D.C.struct and A.B.C.C.struct are better.
-    );
 }
 
 fn main() {
@@ -540,7 +351,7 @@ fn main() {
     let filepaths: Vec<_> = args.collect();
 
     let arena = Arena::new();
-    let (schema_files, symbols) = load(&arena, &filepaths);
+    let (schema_files, symbols) = load::load(&arena, &filepaths);
 
     let mut tw = TypeResolvingWriter {
         schema_files,
