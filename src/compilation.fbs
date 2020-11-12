@@ -42,12 +42,12 @@ enum BaseType : byte {
 table Type {
     base_type: BaseType;
     /// Only not `None` if base_type is a Vector or Array.
-    element_type: BaseType = None;
+    element_type: BaseType;
     /// Indexes into `Compilation.symbols` if base_type or element_type are
     /// Struct, Enum, or Union,
-    symbol: uint = null;
+    symbol: uint;
     /// If base_type == Array, the length of the array.
-    fixed_length:uint16 = null;
+    fixed_length: uint16 = null;
 }
 
 
@@ -113,6 +113,7 @@ table RpcService {
 }
 
 /// The various different types of declarations.
+// CASPER: compress this into struct, union, service.
 union Declaration {
   Struct,
   Table,

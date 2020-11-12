@@ -8,6 +8,7 @@ edition = "2018"
 
 [dependencies]
 flatbuffers = "*"
-nom = { version = "5.0.0", features = ["regex"] }
+nom = "5.0.0"
 typed-arena = "2.0.0"
+nom_locate = "2.1.0"
 # indexmap = "1.6.0"
