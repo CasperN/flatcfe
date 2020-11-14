@@ -45,7 +45,7 @@ table Type {
     element_type: BaseType;
     /// Indexes into `Compilation.symbols` if base_type or element_type are
     /// Struct, Enum, or Union,
-    symbol: uint;
+    symbol: uint = null;
     /// If base_type == Array, the length of the array.
     fixed_length: uint16 = null;
 }
@@ -82,12 +82,14 @@ table TableField {
   name: string;
   metadata: Metadata;
   type: Type;
+  /// Ignored for structs.
   non_presence_behavior: NonPresenceBehavior;
   default_value: string;
 }
 table EnumVariant {
   name: string;
   metadata: Metadata;
+  /// Optional type for unions
   type: Type;
 }
 table RpcMethod {

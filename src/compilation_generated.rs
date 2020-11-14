@@ -697,7 +697,9 @@ pub mod flatbuffers_compiler {
             args: &'args TypeArgs,
         ) -> flatbuffers::WIPOffset<Type<'bldr>> {
             let mut builder = TypeBuilder::new(_fbb);
-            builder.add_symbol(args.symbol);
+            if let Some(x) = args.symbol {
+                builder.add_symbol(x);
+            }
             if let Some(x) = args.fixed_length {
                 builder.add_fixed_length(x);
             }
@@ -727,8 +729,8 @@ pub mod flatbuffers_compiler {
         /// Indexes into `Compilation.symbols` if base_type or element_type are
         /// Struct, Enum, or Union,
         #[inline]
-        pub fn symbol(&self) -> u32 {
-            self._tab.get::<u32>(Type::VT_SYMBOL, Some(0)).unwrap()
+        pub fn symbol(&self) -> Option<u32> {
+            self._tab.get::<u32>(Type::VT_SYMBOL, None)
         }
         /// If base_type == Array, the length of the array.
         #[inline]
@@ -740,7 +742,7 @@ pub mod flatbuffers_compiler {
     pub struct TypeArgs {
         pub base_type: BaseType,
         pub element_type: BaseType,
-        pub symbol: u32,
+        pub symbol: Option<u32>,
         pub fixed_length: Option<u16>,
     }
     impl<'a> Default for TypeArgs {
@@ -749,7 +751,7 @@ pub mod flatbuffers_compiler {
             TypeArgs {
                 base_type: BaseType::None,
                 element_type: BaseType::None,
-                symbol: 0,
+                symbol: None,
                 fixed_length: None,
             }
         }
@@ -771,7 +773,7 @@ pub mod flatbuffers_compiler {
         }
         #[inline]
         pub fn add_symbol(&mut self, symbol: u32) {
-            self.fbb_.push_slot::<u32>(Type::VT_SYMBOL, symbol, 0);
+            self.fbb_.push_slot_always::<u32>(Type::VT_SYMBOL, symbol);
         }
         #[inline]
         pub fn add_fixed_length(&mut self, fixed_length: u16) {
@@ -1130,6 +1132,7 @@ pub mod flatbuffers_compiler {
             self._tab
                 .get::<flatbuffers::ForwardsUOffset<Type<'a>>>(TableField::VT_TYPE_, None)
         }
+        /// Ignored for structs.
         #[inline]
         pub fn non_presence_behavior(&self) -> NonPresenceBehavior {
             self._tab
@@ -1283,6 +1286,7 @@ pub mod flatbuffers_compiler {
             self._tab
                 .get::<flatbuffers::ForwardsUOffset<Metadata<'a>>>(EnumVariant::VT_METADATA, None)
         }
+        /// Optional type for unions
         #[inline]
         pub fn type_(&self) -> Option<Type<'a>> {
             self._tab

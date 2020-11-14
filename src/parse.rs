@@ -212,12 +212,15 @@ fn table_declaration(schema: Span<'_>) -> ParseResult<Table<'_>> {
 pub struct EnumVariant<'s> {
     pub name: &'s str,
     pub metadata: Metadata<'s>,
+    // For unions
+    pub union_type: Option<TableFieldType<'s>>,
     pub value: Option<&'s str>, // should be integer.
 }
 fn enum_variant(schema: Span<'_>) -> ParseResult<EnumVariant<'_>> {
-    let (rest, (documentation, name, value)) = tuple((
+    let (rest, (documentation, name, union_type, value)) = tuple((
         skip_ws(documentation_block),
         skip_ws(identifier),
+        opt(preceded(skip_ws(char(':')), skip_ws(field_type))),
         maybe_eq_value,
     ))(schema)?;
     let metadata = Metadata {
@@ -231,6 +234,7 @@ fn enum_variant(schema: Span<'_>) -> ParseResult<EnumVariant<'_>> {
         EnumVariant {
             name: *name.fragment(),
             metadata,
+            union_type,
             value,
         },
     ))
@@ -368,10 +372,75 @@ fn simple_declaration<'s, T>(
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
+pub enum Detail<'s> {
+    Struct {
+        is_struct: bool,
+        fields: Vec<TableField<'s>>,
+    },
+    Enum {
+        is_union: bool,
+        enum_type: &'s str,
+        variants: Vec<EnumVariant<'s>>,
+    },
+    RpcService {
+        methods: Vec<RpcMethod<'s>>,
+    },
+}
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct Symbol<'s> {
+    pub name: &'s str,
+    pub metadata: Metadata<'s>,
+    pub detail: Detail<'s>,
+}
+impl<'s> Symbol<'s> {
+    fn from_table(table: Table<'s>) -> Self {
+        let Table {
+            name,
+            metadata,
+            fields,
+            is_struct,
+        } = table;
+        Self {
+            name,
+            metadata,
+            detail: Detail::Struct { is_struct, fields },
+        }
+    }
+    fn from_enum(e: Enum<'s>) -> Self {
+        let Enum {
+            name,
+            enum_type,
+            metadata,
+            variants,
+            is_union,
+        } = e;
+        Self {
+            name,
+            metadata,
+            detail: Detail::Enum {
+                is_union,
+                enum_type,
+                variants,
+            },
+        }
+    }
+    fn from_rpc_service(r: RpcService<'s>) -> Self {
+        let RpcService {
+            name,
+            metadata,
+            methods,
+        } = r;
+        Self {
+            name,
+            metadata,
+            detail: Detail::RpcService { methods },
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Declaration<'s> {
-    Table(Table<'s>),
-    Enum(Enum<'s>),
-    RpcService(RpcService<'s>),
+    Symbol(Symbol<'s>),
     Namespace(IdentifierPath<'s>),
     FileExtension(&'s str),
     FileIdentifier(&'s str),
@@ -381,10 +450,18 @@ fn declaration(schema: Span<'_>) -> ParseResult<Declaration<'_>> {
     let file_ext_declaration = simple_declaration("file_extension", string_literal);
     let file_id_declaration = simple_declaration("file_identifier", string_literal);
     alt((
-        map(table_declaration, Declaration::Table),
-        map(enum_declaration, Declaration::Enum),
-        map(union_declaration, Declaration::Enum),
-        map(rpc_service_declaration, Declaration::RpcService),
+        map(table_declaration, |t| {
+            Declaration::Symbol(Symbol::from_table(t))
+        }),
+        map(enum_declaration, |e| {
+            Declaration::Symbol(Symbol::from_enum(e))
+        }),
+        map(union_declaration, |e| {
+            Declaration::Symbol(Symbol::from_enum(e))
+        }),
+        map(rpc_service_declaration, |r| {
+            Declaration::Symbol(Symbol::from_rpc_service(r))
+        }),
         map(namespace_declaration, Declaration::Namespace),
         map(file_ext_declaration, Declaration::FileExtension),
         map(file_id_declaration, Declaration::FileIdentifier),
