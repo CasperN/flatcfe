@@ -68,6 +68,30 @@ fn test_fully_parse_enums() {
     go("///Doc\n  enum /*lol */ Enum  : E { A,\nB,///DocCom\nC,}");
 }
 
+
+#[test]
+fn test_maybe_keyvals() {
+    // No keyvals, or empty keyvals match and are equivalent.
+    assert_eq!(full_parse(maybe_keyvals, ""), vec![]);
+    assert_eq!(full_parse(maybe_keyvals, "()"), vec![]);
+    // value is optional, whitespace is ignored.
+    assert_eq!(full_parse(maybe_keyvals, "  (a=\nb, \t\rb, c=d)"), vec![
+        KeyVal { key: "a", value: Some("b") },
+        KeyVal { key: "b", value: None },
+        KeyVal { key: "c", value: Some("d") },
+    ]);
+    //
+}
+
+#[test]
+fn test_field_type() {
+    assert_eq!(full_parse(field_type, "abc"), Type::Single(IdentifierPath("abc")));
+    assert_eq!(full_parse(field_type, "a.b.c"), Type::Single(IdentifierPath("a.b.c")));
+    assert_eq!(full_parse(field_type, "[ abc : 3]"), Type::Array(IdentifierPath("abc"), 3));
+    assert_eq!(full_parse(field_type, "[abc]"), Type::Vector(IdentifierPath("abc")));
+}
+
+
 #[test]
 fn test_parse_table_details() {
     let table = full_parse(
@@ -79,11 +103,11 @@ fn test_parse_table_details() {
              /// Sup bro.
             field1:Foo;
            /// Sup
-           /// bro
+            /// bro
             field2: [Foo.Bar];
             field3 :Foo.Bar.Baz (sup, bro);
 
-            field4 : [Foo.Bar.Baz] (sup = bro);
+            field4 : [Foo.Bar.Baz: 3] (sup = bro);
         }",
     );
     assert_eq!(table.name, "Foo");
@@ -105,8 +129,7 @@ fn test_parse_table_details() {
         let field1 = &table.fields[0];
         assert_eq!(field1.field_name, "field1");
         assert_eq!(field1.metadata.documentation.0, &[" Sup bro."]);
-        assert_eq!(&field1.field_type.ident_path.0, &"Foo");
-        assert!(!field1.field_type.is_vector);
+        assert_eq!(field1.field_type, Type::Single(IdentifierPath("Foo")));
         assert!(field1.metadata.attributes.is_empty());
     }
     {
@@ -114,16 +137,14 @@ fn test_parse_table_details() {
         let field2 = &table.fields[1];
         assert_eq!(field2.field_name, "field2");
         assert_eq!(field2.metadata.documentation.0, &[" Sup", " bro"]);
-        assert_eq!(&field2.field_type.ident_path.0, &"Foo.Bar");
-        assert!(field2.field_type.is_vector);
+        assert_eq!(field2.field_type, Type::Vector(IdentifierPath("Foo.Bar")));
         assert!(field2.metadata.attributes.is_empty());
     }
     {
         // Test field3 makes sense.
         let field3 = &table.fields[2];
         assert_eq!(field3.field_name, "field3");
-        assert_eq!(&field3.field_type.ident_path.0, &"Foo.Bar.Baz");
-        assert!(!field3.field_type.is_vector);
+        assert_eq!(field3.field_type, Type::Single(IdentifierPath("Foo.Bar.Baz")));
         assert_eq!(field3.metadata.attributes.len(), 2);
         assert_eq!(field3.metadata.attributes[0].key, "sup");
         assert_eq!(field3.metadata.attributes[0].value, None);
@@ -134,8 +155,7 @@ fn test_parse_table_details() {
         // Test field4 makes sense.
         let field4 = &table.fields[3];
         assert_eq!(field4.field_name, "field4");
-        assert_eq!(&field4.field_type.ident_path.0, &"Foo.Bar.Baz");
-        assert!(field4.field_type.is_vector);
+        assert_eq!(field4.field_type, Type::Array(IdentifierPath("Foo.Bar.Baz"), 3));
         assert_eq!(field4.metadata.attributes.len(), 1);
         assert_eq!(field4.metadata.attributes[0].key, "sup");
         assert_eq!(field4.metadata.attributes[0].value, Some("bro"));

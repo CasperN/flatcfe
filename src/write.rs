@@ -43,7 +43,7 @@ fn write_type<'b>(
             base_type: ty.base_type,
             element_type: ty.element_type,
             symbol: ty.symbol.map(|s| s as u32),
-            fixed_length: Some(ty.fixed_length as u16),
+            fixed_length: ty.fixed_length,
         },
     )
 }
@@ -72,7 +72,7 @@ fn write_detail<'a, 'b>(
                         default_value: Some(default_value),
                         non_presence_behavior: flatc::NonPresenceBehavior::Optional, // TODO!
                         type_: Some(ty),
-                    }
+                    },
                 ));
             }
             let detail_type = if *is_struct {
@@ -97,16 +97,16 @@ fn write_detail<'a, 'b>(
             for variant in variants.iter() {
                 let name = fbb.create_string(variant.name);
                 let metadata = write_metadata(schema_index, &variant.metadata, fbb);
+                let type_ = variant.union_type.as_ref().map(|ut| write_type(fbb, ut));
                 written_variants.push(flatc::EnumVariant::create(
                     fbb,
                     &flatc::EnumVariantArgs {
                         name: Some(name),
                         metadata: Some(metadata),
-                        type_: None, // TODO
+                        type_,
                     },
                 ));
             }
-            // CASPER enums need base types.
             let detail_type = if *is_union {
                 flatc::Declaration::Enum
             } else {
@@ -200,7 +200,7 @@ pub fn write_compilation<'a, 'b>(
             symbols: Some(symbols),
             schemas: Some(schemas),
             code_gen_options: None,
-            features: None,
+            features: None,  // TODO: ArrayInTable, OptionalScalar, AdvancedUnions,
         },
     );
     fbb.finish(compilation, None);

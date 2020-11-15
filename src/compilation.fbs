@@ -79,6 +79,7 @@ enum NonPresenceBehavior: byte {
   Required,
 }
 table TableField {
+  // TODO this should be named StructField for consistency right?
   name: string;
   metadata: Metadata;
   type: Type;
@@ -108,6 +109,7 @@ table Union {
   variants: [EnumVariant];
 }
 table Enum {
+  // TODO: Enums need basetype.
   variants: [EnumVariant];
 }
 table RpcService {

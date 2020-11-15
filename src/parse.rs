@@ -1,10 +1,10 @@
 use nom;
 use nom::branch::alt;
 use nom::bytes::complete::{is_not, tag, take_until, take_while};
-use nom::character::complete::{alpha1, char, multispace0, multispace1, none_of, one_of};
+use nom::character::complete::{alpha1, char, digit1, multispace0, multispace1, none_of, one_of};
 use nom::combinator::{map, opt, peek, recognize, value};
-use nom::multi::{many0, separated_list};
-use nom::sequence::{delimited, preceded, terminated, tuple};
+use nom::multi::{many0, separated_nonempty_list, separated_list};
+use nom::sequence::{delimited, preceded, separated_pair, terminated, tuple};
 use nom_locate::LocatedSpan;
 
 #[cfg(test)]
@@ -54,11 +54,11 @@ fn identifier<'s>(s: Span<'s>) -> ParseResult<LocatedSpan<&str>> {
     preceded(peek(head), body)(s)
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct IdentifierPath<'s>(pub &'s str);
 fn identifier_path<'s>(s: Span<'s>) -> ParseResult<IdentifierPath> {
     map(
-        recognize(separated_list(
+        recognize(separated_nonempty_list(
             nom::character::complete::char('.'),
             identifier,
         )),
@@ -91,39 +91,38 @@ fn keyval(schema: Span<'_>) -> ParseResult<KeyVal<'_>> {
 }
 // Returns an empty list if there's no list.
 fn maybe_keyvals(schema: Span<'_>) -> ParseResult<Vec<KeyVal<'_>>> {
-    let open = preceded(multispace0, char('('));
-    let sep = preceded(multispace0, char(','));
-    let close = preceded(multispace0, char(')'));
+    let kv_list = separated_list(skip_ws(char(',')), keyval);
     map(
-        opt(delimited(open, separated_list(sep, keyval), close)),
+        opt(delimited_by_chars('(', kv_list, ')')),
         |v| v.unwrap_or_default(),
     )(schema)
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub struct TableFieldType<'s> {
-    pub ident_path: IdentifierPath<'s>,
-    pub is_vector: bool,
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum Type<'s> {
+    Single(IdentifierPath<'s>),
+    Vector(IdentifierPath<'s>),
+    Array(IdentifierPath<'s>, u16),
 }
-fn field_type<'s>(s: Span<'s>) -> ParseResult<TableFieldType<'_>> {
-    // Try parsing a type as an identifier_path.
-    // All primitive types fit but type resolution will happen later.
-    let non_vector = preceded(multispace0, identifier_path);
-    // let open = tuple((char('['),));
-    // let close = tuple((multispace0, char(']')));
-    let open = char('[');
-    let close = preceded(multispace0, char(']'));
-    let vector = delimited(open, preceded(multispace0, identifier_path), close);
-    alt((
-        map(vector, |ident_path| TableFieldType {
-            ident_path,
-            is_vector: true,
+fn field_type<'s>(s: Span<'s>) -> ParseResult<Type<'_>> {
+    let array = delimited_by_chars(
+        '[',
+        separated_pair(
+            skip_ws(identifier_path),
+            skip_ws(char(':')),
+            skip_ws(digit1),
+        ),
+        ']',
+    );
+    dbg!(alt((
+        map(skip_ws(identifier_path), |id| Type::Single(id)),
+        map(delimited_by_chars('[', identifier_path, ']'), |id| {
+            Type::Vector(id)
         }),
-        map(non_vector, |ident_path| TableFieldType {
-            ident_path,
-            is_vector: false,
+        map(array, |(id, cardinality)| {
+            Type::Array(id, cardinality.parse::<u16>().unwrap())
         }),
-    ))(s)
+    ))(s))
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -137,7 +136,7 @@ pub struct Metadata<'s> {
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct TableField<'s> {
     pub field_name: &'s str,
-    pub field_type: TableFieldType<'s>,
+    pub field_type: Type<'s>,
     pub metadata: Metadata<'s>,
     pub default_value: Option<&'s str>,
 }
@@ -213,7 +212,7 @@ pub struct EnumVariant<'s> {
     pub name: &'s str,
     pub metadata: Metadata<'s>,
     // For unions
-    pub union_type: Option<TableFieldType<'s>>,
+    pub union_type: Option<Type<'s>>,
     pub value: Option<&'s str>, // should be integer.
 }
 fn enum_variant(schema: Span<'_>) -> ParseResult<EnumVariant<'_>> {

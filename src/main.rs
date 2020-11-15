@@ -19,15 +19,15 @@ TODO:
 - ParserErrors
     - Location tracking.
     - Readable errors
+- Testing.
+    - End-to-end tests with test schemas?
+    - Scrub TODOs
 - Flags
     - Input code_gen_options
     - Output to json? or debug vs binary output
-- Wtf with root type and file_id, file_ext?
-- Restructure the parser types to be Symbol with sub-enum { table, union, enum, struct, etc? }
-
+- Deal with weird declarations:
+    - root type and file_id, file_ext?
 - Array support.
-- Write FileInfo
-- untie type resolution from writing?
 */
 
 fn main() {
@@ -40,14 +40,13 @@ fn main() {
     let filepaths: Vec<_> = args.collect();
 
     let arena = Arena::new();
-    let (schema_files, symbols) = load::load(&arena, &filepaths);
-    let (symbols, schema_files) = resolve::resolve(schema_files, symbols);
+    let (schema_files, declarations) = load::load(&arena, &filepaths);
+    let (symbols, schema_files) = resolve::resolve(schema_files, declarations);
 
     let mut fbb = FlatBufferBuilder::new();
     write::write_compilation(&mut fbb, &schema_files, &symbols);
 
     let buf = fbb.finished_data();
     let c = flatbuffers::get_root::<flatc::Compilation>(buf);
-    // dbg!(c);
-    println!("{:?}", buf);
+    println!("{:#?}", c);
 }

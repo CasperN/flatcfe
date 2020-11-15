@@ -11,7 +11,7 @@ pub struct ResolvedType {
     // True for tables and unions. BaseType doesn't model this for reasons...
     pub has_references: bool,
     pub symbol: Option<usize>,
-    pub fixed_length: u16,
+    pub fixed_length: Option<u16>,
 }
 pub struct TableField<'a> {
     pub field_name: &'a str,
@@ -59,7 +59,12 @@ pub fn resolve<'a>(
     symbols: Vec<load::Declaration<'a>>,
 ) -> (Vec<load::FileInfo<'a>>, Vec<Symbol<'a>>) {
     let mut resolved_symbols = Vec::new();
-    for i in 0..symbols.len() {
+    for (i, s) in symbols.iter().enumerate() {
+        let schema_index = schemas
+            .binary_search_by_key(&s.defining_schema, |s| &s.filename)
+            .unwrap();
+        // TODO: CASPER: update imported_symbols too.
+        schemas[schema_index].symbols.push(i);
         resolved_symbols.push(resolve_symbol(i, &symbols, &mut schemas));
     }
     (schemas, resolved_symbols)
@@ -73,22 +78,12 @@ fn resolve_table_field<'a>(
 ) -> TableField<'a> {
     let parse::TableField {
         field_name,
-        field_type:
-            parse::TableFieldType {
-                ident_path: parse::IdentifierPath(type_identifier),
-                is_vector,
-            },
+        field_type,
         metadata,
         default_value: parsed_default_value,
     } = parsed_table_field;
 
-    let field_type = resolve_type(
-        type_identifier,
-        table.full_name,
-        *is_vector,
-        symbols,
-        schemas,
-    );
+    let field_type = resolve_type(*field_type, table.full_name, symbols, schemas);
     // Make sure structs don't contain tables or unions.
     if let parse::Detail::Struct { is_struct, .. } = table.parsed_symbol.detail {
         if is_struct && field_type.has_references {
@@ -137,19 +132,19 @@ fn resolve_enum_variant<'a>(
             );
             std::process::exit(1);
         }
-        (true, ut) => {
-            let (type_path, is_vector) = if let Some(t) = ut {
-                (t.ident_path.0, t.is_vector)
+        (true, union_type) => {
+            let ty = if let Some(t) = union_type {
+                // TODO: advanced union features -- structs, vectors, arrays...
+                *t
             } else {
                 // If unspecified, the union variant's type name is its name.
                 // TODO: to update variant name if its a qualified union variant
                 // union X { A.B.Y } => A_B_Y variant.
-                (*name, false)
+                parse::Type::Single(parse::IdentifierPath(*name))
             };
             Some(resolve_type(
-                type_path,
+                ty,
                 union_symbol.full_name,
-                is_vector,
                 symbols,
                 schemas,
             ))
@@ -177,9 +172,16 @@ fn resolve_rpc_method<'a>(
         argument_type: parsed_argument_type,
         return_type: parsed_return_type,
     } = parsed_rpc_method;
-    let mut resolve = |ty| resolve_type(ty, rpc_service.full_name, false, symbols, schemas);
-    let argument_type = resolve(parsed_argument_type.0);
-    let return_type = resolve(parsed_return_type.0);
+    let mut resolve = |ty: &parse::IdentifierPath| {
+        resolve_type(
+            parse::Type::Single(*ty),
+            rpc_service.full_name,
+            symbols,
+            schemas,
+        )
+    };
+    let argument_type = resolve(parsed_argument_type);
+    let return_type = resolve(parsed_return_type);
     RpcMethod {
         name,
         metadata: metadata.clone(),
@@ -309,13 +311,17 @@ impl ResolvedType {
 }
 
 fn resolve_type(
-    ty: &str,
+    parsed_type: parse::Type<'_>,
     caller: &str, // need caller_schemafile_index
-    is_vector: bool,
     symbols: &[load::Declaration<'_>],
     _schemas: &mut [load::FileInfo<'_>], // CASPER: Calling schema needs to be updated with who it imported.
 ) -> ResolvedType {
-    let (ty, has_references, symbol) = if let Some(base_type) = resolve_primitive_type(ty) {
+    let ty = match parsed_type {
+        parse::Type::Single(ident_path) => ident_path.0,
+        parse::Type::Vector(ident_path) => ident_path.0,
+        parse::Type::Array(ident_path, _) => ident_path.0,
+    };
+    let (ty, mut has_references, symbol) = if let Some(base_type) = resolve_primitive_type(ty) {
         let has_references = base_type == flatc::BaseType::String;
         (base_type, has_references, None)
     } else {
@@ -354,16 +360,19 @@ fn resolve_type(
         };
         (ty, has_references, Some(symbol_index))
     };
-    let (base_type, element_type) = if is_vector {
-        (flatc::BaseType::Vector, ty)
-    } else {
-        (ty, flatc::BaseType::None)
+    let (base_type, element_type, fixed_length) = match parsed_type {
+        parse::Type::Single(_) => (ty, flatc::BaseType::None, None),
+        parse::Type::Array(_, n) => (flatc::BaseType::Array, ty, Some(n)),
+        parse::Type::Vector(_) => {
+            has_references = true;
+            (flatc::BaseType::Vector, ty, None)
+        }
     };
     ResolvedType {
         base_type,
         element_type,
-        fixed_length: 0,
-        has_references: has_references || is_vector,
+        fixed_length,
+        has_references,
         symbol,
     }
 }
