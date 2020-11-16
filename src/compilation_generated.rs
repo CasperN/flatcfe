@@ -342,71 +342,28 @@ pub mod flatbuffers_compiler {
     }
 
     pub struct DeclarationUnionTableOffset {}
-    #[deprecated(
-        since = "1.13",
-        note = "Use associated constants instead. This will no longer be generated in 2021."
-    )]
-    pub const ENUM_MIN_FEATURE: u16 = 0;
-    #[deprecated(
-        since = "1.13",
-        note = "Use associated constants instead. This will no longer be generated in 2021."
-    )]
-    pub const ENUM_MAX_FEATURE: u16 = 2;
-    #[deprecated(
-        since = "1.13",
-        note = "Use associated constants instead. This will no longer be generated in 2021."
-    )]
-    #[allow(non_camel_case_types)]
-    pub const ENUM_VALUES_FEATURE: [Feature; 3] = [
-        Feature::AdvancedUnions,
-        Feature::OptionalScalars,
-        Feature::FixedSizeArrays,
-    ];
-
-    /// New schema language features that will probably break code generators.
-    #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-    #[repr(transparent)]
-    pub struct Feature(pub u16);
     #[allow(non_upper_case_globals)]
-    impl Feature {
-        /// Allows unions containing structs or vectors.
-        pub const AdvancedUnions: Self = Self(0);
-        /// Allows `null` as a default value for scalars in tables.
-        pub const OptionalScalars: Self = Self(1);
-        /// Allows fixed size arrays.
-        pub const FixedSizeArrays: Self = Self(2);
+    mod bitflags_feature {
+        flatbuffers::bitflags::bitflags! {
+          /// New schema language features that will probably break code generators.
+          pub struct Feature: u64 {
+            /// Allows unions containing structs or vectors.
+            const AdvancedUnions = 1;
+            /// Allows `null` as a default value for scalars in tables.
+            const OptionalScalars = 2;
+            /// Allows fixed size arrays in structs (not tables).
+            const FixedSizeArraysInStructs = 4;
+          }
+        }
+    }
+    pub use self::bitflags_feature::Feature;
 
-        pub const ENUM_MIN: u16 = 0;
-        pub const ENUM_MAX: u16 = 2;
-        pub const ENUM_VALUES: &'static [Self] = &[
-            Self::AdvancedUnions,
-            Self::OptionalScalars,
-            Self::FixedSizeArrays,
-        ];
-        /// Returns the variant's name or "" if unknown.
-        pub fn variant_name(self) -> Option<&'static str> {
-            match self {
-                Self::AdvancedUnions => Some("AdvancedUnions"),
-                Self::OptionalScalars => Some("OptionalScalars"),
-                Self::FixedSizeArrays => Some("FixedSizeArrays"),
-                _ => None,
-            }
-        }
-    }
-    impl std::fmt::Debug for Feature {
-        fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-            if let Some(name) = self.variant_name() {
-                f.write_str(name)
-            } else {
-                f.write_fmt(format_args!("<UNKNOWN {:?}>", self.0))
-            }
-        }
-    }
     impl<'a> flatbuffers::Follow<'a> for Feature {
         type Inner = Self;
         #[inline]
         fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-            Self(flatbuffers::read_scalar_at::<u16>(buf, loc))
+            let bits = flatbuffers::read_scalar_at::<u64>(buf, loc);
+            unsafe { Self::from_bits_unchecked(bits) }
         }
     }
 
@@ -414,18 +371,20 @@ pub mod flatbuffers_compiler {
         type Output = Feature;
         #[inline]
         fn push(&self, dst: &mut [u8], _rest: &[u8]) {
-            flatbuffers::emplace_scalar::<u16>(dst, self.0);
+            flatbuffers::emplace_scalar::<u64>(dst, self.bits());
         }
     }
 
     impl flatbuffers::EndianScalar for Feature {
         #[inline]
         fn to_little_endian(self) -> Self {
-            Self(u16::to_le(self.0))
+            let bits = u64::to_le(self.bits());
+            unsafe { Self::from_bits_unchecked(bits) }
         }
         #[inline]
         fn from_little_endian(self) -> Self {
-            Self(u16::from_le(self.0))
+            let bits = u64::from_le(self.bits());
+            unsafe { Self::from_bits_unchecked(bits) }
         }
     }
 

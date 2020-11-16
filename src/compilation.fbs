@@ -138,7 +138,7 @@ table Symbol {
 
 
 /// New schema language features that will probably break code generators.
-enum Feature : uint16 {
+enum Feature : uint64 (bit_flags) {
   /// Allows unions containing structs or vectors.
   AdvancedUnions,
   /// Allows `null` as a default value for scalars in tables.
@@ -193,5 +193,5 @@ table Compilation {
   code_gen_options: CodeGenOptions;
   /// New schema features. Code generators must check all features are
   /// recognized and supported, and warn or fail appropriately.
-  features: [Feature];
+  features: Feature;
 }

@@ -187,7 +187,7 @@ fn field_type<'s>(s: Span<'s>) -> ParseResult<Type<'_>> {
         ),
         ']',
     );
-    dbg!(alt((
+    alt((
         map(skip_ws(identifier_path), |id| Type::Single(id)),
         map(delimited_by_chars('[', identifier_path, ']'), |id| {
             Type::Vector(id)
@@ -195,7 +195,7 @@ fn field_type<'s>(s: Span<'s>) -> ParseResult<Type<'_>> {
         map(array, |(id, cardinality)| {
             Type::Array(id, cardinality.parse::<u16>().unwrap())
         }),
-    ))(s))
+    ))(s)
 }
 
 fn table_field(schema: Span<'_>) -> ParseResult<TableField<'_>> {
@@ -286,17 +286,18 @@ fn enum_body(schema: Span<'_>) -> ParseResult<Vec<EnumVariant<'_>>> {
 }
 
 fn enum_declaration(schema: Span<'_>) -> ParseResult<Declaration<'_>> {
-    let (rest, (documentation, name, enum_type, variants)) = tuple((
+    let (rest, (documentation, name, enum_type, attributes, variants)) = tuple((
         skip_ws(documentation_block),
         preceded(skip_ws(tag("enum")), skip_ws(identifier)),
         preceded(skip_ws(char(':')), skip_ws(identifier)),
+        maybe_keyvals,
         skip_ws(enum_body),
     ))(schema)?;
     let metadata = Metadata {
         documentation,
         line: name.location_line(),
         column: name.get_column() as u32,
-        attributes: Vec::new(), // not allowed so far.
+        attributes,
     };
     Ok((
         rest,
