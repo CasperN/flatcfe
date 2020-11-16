@@ -142,12 +142,7 @@ fn resolve_enum_variant<'a>(
                 // union X { A.B.Y } => A_B_Y variant.
                 parse::Type::Single(parse::IdentifierPath(*name))
             };
-            Some(resolve_type(
-                ty,
-                union_symbol.full_name,
-                symbols,
-                schemas,
-            ))
+            Some(resolve_type(ty, union_symbol.full_name, symbols, schemas))
         }
     };
 

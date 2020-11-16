@@ -200,7 +200,7 @@ pub fn write_compilation<'a, 'b>(
             symbols: Some(symbols),
             schemas: Some(schemas),
             code_gen_options: None,
-            features: None,  // TODO: ArrayInTable, OptionalScalar, AdvancedUnions,
+            features: None, // TODO: ArrayInTable, OptionalScalar, AdvancedUnions,
         },
     );
     fbb.finish(compilation, None);

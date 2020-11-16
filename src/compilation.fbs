@@ -143,8 +143,8 @@ enum Feature : uint16 {
   AdvancedUnions,
   /// Allows `null` as a default value for scalars in tables.
   OptionalScalars,
-  /// Allows fixed size arrays.
-  FixedSizeArrays,
+  /// Allows fixed size arrays in structs (not tables).
+  FixedSizeArraysInStructs,
 }
 
 table CodeGenOptions {

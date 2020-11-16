@@ -16,8 +16,10 @@ TODO:
 - Understand special annotations
     - id, deprecated, required, key
     - id needs to be inferred.
+    - Magic type field for unions.
+    - Validate table default values.
+- Feature detection.
 - ParserErrors
-    - Location tracking.
     - Readable errors
 - Testing.
     - End-to-end tests with test schemas?
@@ -27,7 +29,6 @@ TODO:
     - Output to json? or debug vs binary output
 - Deal with weird declarations:
     - root type and file_id, file_ext?
-- Array support.
 */
 
 fn main() {
