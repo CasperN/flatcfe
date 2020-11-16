@@ -1,6 +1,7 @@
 use crate::flatc;
 use crate::load;
 use crate::parse;
+use crate::types::is_integer;
 use crate::types::resolve_primitive_type;
 use crate::types::type_precedence;
 
@@ -22,7 +23,8 @@ pub struct TableField<'a> {
 pub struct EnumVariant<'a> {
     pub name: &'a str,
     pub metadata: parse::Metadata<'a>,
-    pub union_type: Option<ResolvedType>,
+    // None if its not a union
+    pub union_type: ResolvedType,
     pub value: i64,
 }
 pub struct RpcMethod<'a> {
@@ -94,6 +96,14 @@ fn resolve_table_field<'a>(
             );
             std::process::exit(1);
         }
+        if !is_struct && field_type.base_type == flatc::BaseType::Array {
+            println!(
+                "Tables cannot have arrays as fields, please wrap it in a struct.\n\
+                 Error at field `{}` defined in file:'{}' at line:{} and column:{}.",
+                field_name, table.defining_schema, metadata.line, metadata.column,
+            );
+            std::process::exit(1);
+        }
     } else {
         unreachable!();
     }
@@ -123,7 +133,13 @@ fn resolve_enum_variant<'a>(
 
     // Resolve union types. CASPER: maybe move this branch elsewhere?
     let union_type = match (is_union, union_type) {
-        (false, None) => None,
+        (false, None) => ResolvedType {
+            base_type: flatc::BaseType::None,
+            element_type: flatc::BaseType::None,
+            symbol: None,
+            fixed_length: None,
+            has_references: false,
+        },
         (false, Some(_)) => {
             println!(
                 "Enum variants do not have types.\n\
@@ -142,7 +158,7 @@ fn resolve_enum_variant<'a>(
                 // union X { A.B.Y } => A_B_Y variant.
                 parse::Type::Single(parse::IdentifierPath(*name))
             };
-            Some(resolve_type(ty, union_symbol.full_name, symbols, schemas))
+            resolve_type(ty, union_symbol.full_name, symbols, schemas)
         }
     };
 
@@ -270,7 +286,7 @@ fn resolve_symbol<'a>(
                     );
                     std::process::exit(1)
                 });
-                if bt.0 < 1 || bt.0 > 10 {
+                if !is_integer(bt) {
                     println!(
                         "Enum base_types must be (unsigned) integral types, not {:?}.\n\
                          Error at declaration `{}` defined in file:'{}' at line:{} and column:{}",

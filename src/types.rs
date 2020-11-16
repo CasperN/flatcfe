@@ -30,6 +30,13 @@ pub fn resolve_primitive_type(ty: &str) -> Option<flatc::BaseType> {
     }
 }
 
+pub fn is_integer(bt: flatc::BaseType) -> bool {
+    flatc::BaseType::Byte.0 <= bt.0 && bt.0 <= flatc::BaseType::ULong.0
+}
+pub fn is_scalar(bt: flatc::BaseType) -> bool {
+    flatc::BaseType::Bool.0 <= bt.0 && bt.0 <= flatc::BaseType::Double.0
+}
+
 /// If `caller` calling `ty` may resolve to `symbol` return Some(p) where p is the precidence.
 /// Assumes `caller` and `symbol` are fully qualified types from the root namespace.
 /// The symbol with the lowest precidence is the one that will be selected.
@@ -69,6 +76,10 @@ pub fn type_precedence(caller: &str, ty: &str, symbol: &str) -> Option<usize> {
 
 #[test]
 fn test_type_precedence() {
+    assert_eq!(
+        type_precedence("A.B.C.D.E.table", "struct", "A.B.C.D.E.struct"),
+        Some(0)
+    );
     assert_eq!(
         type_precedence("A.B.C.D.table", "E.struct", "A.B.C.D.E.struct"),
         Some(0)

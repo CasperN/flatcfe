@@ -7,6 +7,7 @@ use typed_arena::Arena;
 #[allow(clippy::all)] // Generated code.
 #[rustfmt::skip]
 mod compilation_generated;
+mod features;
 mod load;
 mod parse;
 mod resolve;

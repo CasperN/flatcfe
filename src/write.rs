@@ -97,13 +97,13 @@ fn write_detail<'a, 'b>(
             for variant in variants.iter() {
                 let name = fbb.create_string(variant.name);
                 let metadata = write_metadata(schema_index, &variant.metadata, fbb);
-                let type_ = variant.union_type.as_ref().map(|ut| write_type(fbb, ut));
+                let type_ = write_type(fbb, &variant.union_type);
                 written_variants.push(flatc::EnumVariant::create(
                     fbb,
                     &flatc::EnumVariantArgs {
                         name: Some(name),
                         metadata: Some(metadata),
-                        type_,
+                        type_: Some(type_),
                     },
                 ));
             }
@@ -193,14 +193,15 @@ pub fn write_compilation<'a, 'b>(
             .collect();
         fbb.create_vector(&written)
     };
-    let symbols = fbb.create_vector(&written_symbols);
+    let features = crate::features::features(symbols);
+    let symbols = Some(fbb.create_vector(&written_symbols));
     let compilation = flatc::Compilation::create(
         fbb,
         &flatc::CompilationArgs {
-            symbols: Some(symbols),
+            symbols,
+            features,
             schemas: Some(schemas),
             code_gen_options: None,
-            features: None, // TODO: ArrayInTable, OptionalScalar, AdvancedUnions,
         },
     );
     fbb.finish(compilation, None);
