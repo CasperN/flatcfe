@@ -4,6 +4,8 @@ use flatbuffers::FlatBufferBuilder;
 use load::*;
 use typed_arena::Arena;
 
+#[allow(clippy::all)] // Generated code.
+#[rustfmt::skip]
 mod compilation_generated;
 mod load;
 mod parse;

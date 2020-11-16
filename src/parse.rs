@@ -1,4 +1,3 @@
-use nom;
 use nom::branch::alt;
 use nom::bytes::complete::{is_not, tag, take_until, take_while};
 use nom::character::complete::{alpha1, char, digit1, multispace0, multispace1, none_of, one_of};
@@ -125,23 +124,23 @@ fn skip_ws<'s, T>(
     preceded(skip, parser)
 }
 
-fn string_literal<'s>(s: Span<'s>) -> ParseResult<&str> {
+fn string_literal(s: Span) -> ParseResult<&str> {
     let escaped_string = nom::bytes::complete::escaped(is_not("\"\\"), '\\', one_of("\"\\"));
     delimited(skip_ws(char('"')), deloc(escaped_string), char('"'))(s)
 }
 
-fn documentation_block<'s>(s: Span<'s>) -> ParseResult<Documentation> {
+fn documentation_block(s: Span) -> ParseResult<Documentation> {
     let doc = deloc(preceded(skip_ws(tag("///")), is_not("\n\r")));
     map(many0(doc), Documentation)(s)
 }
 
-fn identifier<'s>(s: Span<'s>) -> ParseResult<LocatedSpan<&str>> {
+fn identifier(s: Span) -> ParseResult<LocatedSpan<&str>> {
     let head = alt((alpha1, tag("_")));
     let body = take_while(|c: char| c.is_ascii_alphanumeric() || c == '_');
     preceded(peek(head), body)(s)
 }
 
-fn identifier_path<'s>(s: Span<'s>) -> ParseResult<IdentifierPath> {
+fn identifier_path(s: Span) -> ParseResult<IdentifierPath> {
     map(
         recognize(separated_nonempty_list(
             nom::character::complete::char('.'),
@@ -160,24 +159,24 @@ fn delimited_by_chars<'s, T>(
 }
 
 // TODO: parse single value. (value is not an identifier)
-fn maybe_eq_value<'s>(s: Span<'s>) -> ParseResult<Option<&str>> {
+fn maybe_eq_value(s: Span) -> ParseResult<Option<&str>> {
     opt(deloc(preceded(skip_ws(char('=')), skip_ws(identifier))))(s)
 }
 
-fn keyval(schema: Span<'_>) -> ParseResult<KeyVal<'_>> {
+fn keyval(schema: Span) -> ParseResult<KeyVal> {
     let (rest, key) = deloc(preceded(multispace0, identifier))(schema)?;
     let (rest, value) = maybe_eq_value(rest)?;
     Ok((rest, KeyVal { key, value }))
 }
 // Returns an empty list if there's no list.
-fn maybe_keyvals(schema: Span<'_>) -> ParseResult<Vec<KeyVal<'_>>> {
+fn maybe_keyvals(schema: Span) -> ParseResult<Vec<KeyVal>> {
     let kv_list = separated_list(skip_ws(char(',')), keyval);
     map(opt(delimited_by_chars('(', kv_list, ')')), |v| {
         v.unwrap_or_default()
     })(schema)
 }
 
-fn field_type<'s>(s: Span<'s>) -> ParseResult<Type<'_>> {
+fn field_type(s: Span) -> ParseResult<Type> {
     let array = delimited_by_chars(
         '[',
         separated_pair(
@@ -188,17 +187,15 @@ fn field_type<'s>(s: Span<'s>) -> ParseResult<Type<'_>> {
         ']',
     );
     alt((
-        map(skip_ws(identifier_path), |id| Type::Single(id)),
-        map(delimited_by_chars('[', identifier_path, ']'), |id| {
-            Type::Vector(id)
-        }),
+        map(skip_ws(identifier_path), Type::Single),
+        map(delimited_by_chars('[', identifier_path, ']'), Type::Vector),
         map(array, |(id, cardinality)| {
             Type::Array(id, cardinality.parse::<u16>().unwrap())
         }),
     ))(s)
 }
 
-fn table_field(schema: Span<'_>) -> ParseResult<TableField<'_>> {
+fn table_field(schema: Span) -> ParseResult<TableField> {
     let (rest, (documentation, field_name, _, field_type, default_value, attributes, _)) =
         tuple((
             skip_ws(documentation_block),
@@ -226,7 +223,7 @@ fn table_field(schema: Span<'_>) -> ParseResult<TableField<'_>> {
     ))
 }
 
-fn table_declaration(schema: Span<'_>) -> ParseResult<Declaration<'_>> {
+fn table_declaration(schema: Span) -> ParseResult<Declaration> {
     let struct_or_table = map(
         alt((tag("struct"), tag("table"))),
         |t: LocatedSpan<&str>| *t.fragment() == "struct",
@@ -255,7 +252,7 @@ fn table_declaration(schema: Span<'_>) -> ParseResult<Declaration<'_>> {
     ))
 }
 
-fn enum_variant(schema: Span<'_>) -> ParseResult<EnumVariant<'_>> {
+fn enum_variant(schema: Span) -> ParseResult<EnumVariant> {
     let (rest, (documentation, name, union_type, value)) = tuple((
         skip_ws(documentation_block),
         skip_ws(identifier),
@@ -279,13 +276,13 @@ fn enum_variant(schema: Span<'_>) -> ParseResult<EnumVariant<'_>> {
     ))
 }
 
-fn enum_body(schema: Span<'_>) -> ParseResult<Vec<EnumVariant<'_>>> {
+fn enum_body(schema: Span) -> ParseResult<Vec<EnumVariant>> {
     let variant_list = separated_list(skip_ws(char(',')), enum_variant);
     let maybe_trailing_comma = terminated(variant_list, opt(skip_ws(char(','))));
     delimited_by_chars('{', maybe_trailing_comma, '}')(schema)
 }
 
-fn enum_declaration(schema: Span<'_>) -> ParseResult<Declaration<'_>> {
+fn enum_declaration(schema: Span) -> ParseResult<Declaration> {
     let (rest, (documentation, name, enum_type, attributes, variants)) = tuple((
         skip_ws(documentation_block),
         preceded(skip_ws(tag("enum")), skip_ws(identifier)),
@@ -313,7 +310,7 @@ fn enum_declaration(schema: Span<'_>) -> ParseResult<Declaration<'_>> {
     ))
 }
 
-fn union_declaration(schema: Span<'_>) -> ParseResult<Declaration<'_>> {
+fn union_declaration(schema: Span) -> ParseResult<Declaration> {
     let (rest, (documentation, name, variants)) = tuple((
         skip_ws(documentation_block),
         // CASPER: Unions may have type names!!!
@@ -340,7 +337,7 @@ fn union_declaration(schema: Span<'_>) -> ParseResult<Declaration<'_>> {
     ))
 }
 
-fn rpc_method(schema: Span<'_>) -> ParseResult<RpcMethod<'_>> {
+fn rpc_method(schema: Span) -> ParseResult<RpcMethod> {
     let (rest, (documentation, name, argument_type, return_type)) = tuple((
         skip_ws(documentation_block),
         skip_ws(identifier),
@@ -364,7 +361,7 @@ fn rpc_method(schema: Span<'_>) -> ParseResult<RpcMethod<'_>> {
     ))
 }
 
-fn rpc_service_declaration(schema: Span<'_>) -> ParseResult<Declaration<'_>> {
+fn rpc_service_declaration(schema: Span) -> ParseResult<Declaration> {
     let (rest, (documentation, name, methods)) = tuple((
         skip_ws(documentation_block),
         preceded(skip_ws(tag("rpc_service")), skip_ws(identifier)),
@@ -393,7 +390,7 @@ fn simple_declaration<'s, T>(
     delimited(skip_ws(tag(keyword)), skip_ws(parser), skip_ws(char(';')))
 }
 
-fn declaration(schema: Span<'_>) -> ParseResult<Declaration<'_>> {
+fn declaration(schema: Span) -> ParseResult<Declaration> {
     let namespace_declaration = simple_declaration("namespace", identifier_path);
     let file_ext_declaration = simple_declaration("file_extension", string_literal);
     let file_id_declaration = simple_declaration("file_identifier", string_literal);
@@ -408,7 +405,7 @@ fn declaration(schema: Span<'_>) -> ParseResult<Declaration<'_>> {
     ))(schema)
 }
 
-fn schema<'s>(s: Span<'s>) -> ParseResult<Schema<'_>> {
+fn schema(s: Span) -> ParseResult<Schema> {
     let include_decl = simple_declaration("include", string_literal);
     map(
         tuple((
@@ -429,7 +426,7 @@ fn start<'s, T>(
     move |s: &'s str| parser(LocatedSpan::new(s))
 }
 
-pub fn fully_parse_schema<'s>(contents: &'s str) -> Schema<'s> {
+pub fn fully_parse_schema(contents: &str) -> Schema {
     let (remainder, schema) = start(schema)(contents).expect("Parse Error.");
     assert_eq!(*remainder.fragment(), "", "Did not fully parse schema.");
     schema

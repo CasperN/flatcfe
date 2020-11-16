@@ -255,9 +255,7 @@ fn resolve_symbol<'a>(
             let resolved_variants = variants
                 .iter()
                 .map(|variant| {
-                    let rv =
-                        resolve_enum_variant(&declaration, variant, *is_union, symbols, schemas);
-                    rv
+                    resolve_enum_variant(&declaration, variant, *is_union, symbols, schemas)
                 })
                 .collect();
 
@@ -327,7 +325,7 @@ fn resolve_type(
                 type_precedence(caller, ty, decl.full_name).map(|p| (p, i, decl))
             })
             .min_by_key(|(p, _, _)| *p)
-            .expect(&format!("Couldn't not find type `{}`", &ty));
+            .unwrap_or_else(|| panic!("Couldn't not find type `{}`", &ty));
 
         use parse::Detail::*;
         let (ty, has_references) = match other_decl.parsed_symbol.detail {

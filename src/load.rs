@@ -93,7 +93,7 @@ pub fn load<'a>(
                 .iter()
                 .map(|f| schema_files.binary_search_by_key(f, |(f, _)| f).unwrap())
                 .collect();
-            include_indices.sort();
+            include_indices.sort_unstable();
             FileInfo {
                 filename,
                 includes: include_indices,

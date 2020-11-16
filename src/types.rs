@@ -40,14 +40,14 @@ pub fn type_precedence(caller: &str, ty: &str, symbol: &str) -> Option<usize> {
     // Drop ty suffix from symbol.
     let mut symbol_prefix = {
         let prefix = &symbol[..symbol.len() - ty.len()];
-        if prefix.ends_with(".") {
-            prefix[..prefix.len() - 1].split('.')
+        if let Some(p) = prefix.strip_suffix('.') {
+            p.split('.')
         } else {
-            let mut s = prefix.split('.');
+            let mut p = prefix.split('.');
             if prefix.is_empty() {
-                s.next(); // empty the iterator.
+                p.next(); // empty the iterator.
             }
-            s
+            p
         }
     };
     let mut caller_prefix = caller.split('.');

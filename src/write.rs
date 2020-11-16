@@ -164,7 +164,7 @@ pub fn write_compilation<'a, 'b>(
             &flatc::SymbolArgs {
                 name: Some(name),
                 metadata: Some(metadata),
-                detail_type: detail_type,
+                detail_type,
                 detail: Some(detail),
             },
         ));
