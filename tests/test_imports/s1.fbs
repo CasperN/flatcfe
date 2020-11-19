@@ -1,0 +1,11 @@
+include "test_imports/s2.fbs";
+
+namespace A;
+
+struct Bar {}
+
+table Foo {
+    a: B.Bar;
+    b: A.Baz;
+    c: Bar;
+}

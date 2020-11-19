@@ -24,19 +24,20 @@ pub struct Declaration<'a> {
 /// fully qualified namespaced symbols are globally unique.
 pub fn load<'a>(
     arena: &'a Arena<String>,
-    filenames: &'a [String],
+    filenames: &'a [impl AsRef<str>],
 ) -> (Vec<FileInfo<'a>>, Vec<Declaration<'a>>) {
     let mut to_visit = std::collections::VecDeque::<&'a str>::new();
     let mut schema_files = BTreeMap::<&'a str, BTreeSet<&'a str>>::new();
     let mut symbols = BTreeMap::<&'a str, Declaration<'a>>::new();
     for f in filenames {
-        to_visit.push_back(arena.alloc(f.to_string()));
+        to_visit.push_back(arena.alloc(f.as_ref().to_string()));
     }
     while let Some(schema_file) = to_visit.pop_front() {
         if let std::collections::btree_map::Entry::Vacant(v) = schema_files.entry(&schema_file) {
             // Load the file.
             let path = Path::new(schema_file);
-            let mut f = std::fs::File::open(path).expect("failed to open file.");
+            let mut f = std::fs::File::open(path)
+                .unwrap_or_else(|e| panic!("failed to open file:'{}'\n{}", schema_file,e));
             let buf = arena.alloc(String::new());
             f.read_to_string(buf).expect("failed to read file");
             let parse::Schema {

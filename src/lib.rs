@@ -1,6 +1,5 @@
 #![feature(is_sorted)]
-use compilation_generated::flatbuffers_compiler as flatc;
-use flatbuffers::FlatBufferBuilder;
+pub use compilation_generated::flatbuffers_compiler as flatc;
 use load::*;
 use typed_arena::Arena;
 
@@ -34,23 +33,9 @@ TODO:
     - root type and file_id, file_ext?
 */
 
-fn main() {
-    let mut args = std::env::args();
-    if args.len() == 1 {
-        println!("Usage: ./flatcfe [schema.fbs]+");
-        return;
-    }
-    args.next(); // Skip program name.
-    let filepaths: Vec<_> = args.collect();
-
+pub fn compile(filepaths: &[impl AsRef<str>], fbb: &mut flatbuffers::FlatBufferBuilder) {
     let arena = Arena::new();
-    let (schema_files, declarations) = load::load(&arena, &filepaths);
+    let (schema_files, declarations) = load::load(&arena, filepaths);
     let (symbols, schema_files) = resolve::resolve(schema_files, declarations);
-
-    let mut fbb = FlatBufferBuilder::new();
-    write::write_compilation(&mut fbb, &schema_files, &symbols);
-
-    let buf = fbb.finished_data();
-    let c = flatbuffers::get_root::<flatc::Compilation>(buf);
-    println!("{:#?}", c);
+    write::write_compilation(fbb, &schema_files, &symbols);
 }

@@ -1,0 +1,7 @@
+namespace A;
+
+table Baz {}
+
+namespace B;
+
+enum Bar : byte {}
